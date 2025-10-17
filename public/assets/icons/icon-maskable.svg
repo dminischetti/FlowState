@@ -1,0 +1,15 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="maskableGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7a6cff"/>
+      <stop offset="100%" stop-color="#ff9a6c"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="32" y="32" width="448" height="448" rx="120" fill="url(#maskableGrad)"/>
+  </g>
+  <text x="256" y="310" font-family="'Nunito', 'DM Sans', 'Inter', sans-serif" font-size="200" font-weight="700" text-anchor="middle" fill="#ffffff">FS</text>
+</svg>
