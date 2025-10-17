@@ -1,0 +1,10 @@
+AddType application/manifest+json .webmanifest
+AddType application/javascript .js
+<IfModule mod_headers.c>
+  <Files "sw.js">
+    Header set Service-Worker-Allowed "/"
+  </Files>
+  <FilesMatch "\.(js|css|png|svg|webmanifest)$">
+    Header set Cache-Control "max-age=604800, public"
+  </FilesMatch>
+</IfModule>
