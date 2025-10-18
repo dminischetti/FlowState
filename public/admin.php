@@ -38,14 +38,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $csrfToken = Csrf::generateToken('admin-reset');
 ?><!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <title>Admin tools</title>
+    <script>
+    (function () {
+        try {
+            const stored = localStorage.getItem('flowstate-theme');
+            const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
+            const preferred = stored || (prefersLight ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', preferred);
+        } catch (err) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    }());
+    </script>
     <link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body class="auth-page">
     <main class="auth-card">
+        <button class="btn ghost theme-toggle" type="button" id="theme-toggle" aria-label="Toggle theme" aria-pressed="false">☾</button>
         <h1>Reset password</h1>
         <form method="post" class="form-card">
             <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES); ?>">
@@ -57,5 +70,34 @@ $csrfToken = Csrf::generateToken('admin-reset');
             <p class="form-hint"><?= htmlspecialchars($message, ENT_QUOTES); ?></p>
         </form>
     </main>
+    <script>
+    (function () {
+        const root = document.documentElement;
+        const toggle = document.getElementById('theme-toggle');
+        const updateToggle = function (theme) {
+            if (!toggle) {
+                return;
+            }
+            const isDark = theme === 'dark';
+            toggle.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+            toggle.textContent = isDark ? '☀︎' : '☾';
+            toggle.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+        };
+        updateToggle(root.getAttribute('data-theme') || 'dark');
+        if (toggle) {
+            toggle.addEventListener('click', function () {
+                const current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+                const next = current === 'dark' ? 'light' : 'dark';
+                root.setAttribute('data-theme', next);
+                updateToggle(next);
+                try {
+                    localStorage.setItem('flowstate-theme', next);
+                } catch (err) {
+                    /* ignore */
+                }
+            });
+        }
+    }());
+    </script>
 </body>
 </html>

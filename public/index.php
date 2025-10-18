@@ -4,12 +4,24 @@ declare(strict_types=1);
 
 $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_GET['p']) : null;
 ?><!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <title>FlowState Workspace</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="manifest" href="manifest.webmanifest">
+    <script>
+    (function () {
+        try {
+            const stored = localStorage.getItem('flowstate-theme');
+            const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
+            const preferred = stored || (prefersLight ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', preferred);
+        } catch (err) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    }());
+    </script>
     <link rel="stylesheet" href="assets/css/app.css">
     <meta name="theme-color" content="#ffffff">
 </head>
@@ -19,6 +31,7 @@ $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_
             <button class="btn ghost" id="graph-toggle" aria-expanded="false">☰ Graph</button>
             <div class="logo-mark">FlowState</div>
             <div class="top-actions">
+                <button class="btn ghost theme-toggle" type="button" id="theme-toggle" aria-pressed="false" aria-label="Toggle theme">☾</button>
                 <button class="btn ghost" id="cmdk-button" aria-haspopup="dialog">⌘K</button>
                 <a class="btn ghost" href="logout.php">Sign out</a>
             </div>
@@ -73,5 +86,34 @@ $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_
     <script src="assets/js/editor.js"></script>
     <script src="assets/js/graph.js"></script>
     <script src="assets/js/app.js"></script>
+    <script>
+    (function () {
+        const root = document.documentElement;
+        const toggle = document.getElementById('theme-toggle');
+        const updateToggle = function (theme) {
+            if (!toggle) {
+                return;
+            }
+            const isDark = theme === 'dark';
+            toggle.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+            toggle.textContent = isDark ? '☀︎' : '☾';
+            toggle.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+        };
+        updateToggle(root.getAttribute('data-theme') || 'dark');
+        if (toggle) {
+            toggle.addEventListener('click', function () {
+                const current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+                const next = current === 'dark' ? 'light' : 'dark';
+                root.setAttribute('data-theme', next);
+                updateToggle(next);
+                try {
+                    localStorage.setItem('flowstate-theme', next);
+                } catch (err) {
+                    /* ignore */
+                }
+            });
+        }
+    }());
+    </script>
 </body>
 </html>
