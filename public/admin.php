@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 use FlowState\Auth;
 use FlowState\Csrf;
-use FlowState\Response;
+use FlowState\Session;
 
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/Csrf.php';
-require_once __DIR__ . '/../src/Response.php';
+require_once __DIR__ . '/../src/Session.php';
 
 $config = require __DIR__ . '/../config/config.php';
 $pdo = require __DIR__ . '/../config/database.php';
+
+Session::configure($config['session']['name']);
+Session::start();
 
 $auth = new Auth($pdo, $config['session']['name']);
 if (!$auth->check()) {

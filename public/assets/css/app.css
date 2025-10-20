@@ -765,6 +765,10 @@ canvas {
   .panel-graph {
     display: none;
   }
+
+  .panel-graph.visible {
+    display: flex;
+  }
 }
 
 @media (max-width: 900px) {

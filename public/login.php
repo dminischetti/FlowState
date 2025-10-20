@@ -2,6 +2,26 @@
 
 declare(strict_types=1);
 
+use FlowState\Auth;
+use FlowState\Session;
+
+require_once __DIR__ . '/../src/Auth.php';
+require_once __DIR__ . '/../src/Session.php';
+
+$config = require __DIR__ . '/../config/config.php';
+$pdo = require __DIR__ . '/../config/database.php';
+
+Session::configure($config['session']['name']);
+Session::start();
+
+$auth = new Auth($pdo, $config['session']['name']);
+if ($auth->check()) {
+    header('Location: index.php');
+    exit;
+}
+
+$apiBase = $config['app']['api_base'] ?? '/api';
+
 ?><!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -22,7 +42,7 @@ declare(strict_types=1);
     </script>
     <link rel="stylesheet" href="assets/css/app.css">
 </head>
-<body class="auth-page">
+<body class="auth-page" data-api-base="<?= htmlspecialchars($apiBase, ENT_QUOTES); ?>">
     <main class="auth-card">
         <button class="btn ghost theme-toggle" type="button" id="theme-toggle" aria-label="Toggle theme" aria-pressed="false">☾</button>
         <h1 class="logo">FlowState</h1>

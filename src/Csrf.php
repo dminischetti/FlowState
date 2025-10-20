@@ -11,20 +11,9 @@ class Csrf
 {
     private const SESSION_KEY = 'csrf_tokens';
 
-    public static function ensureSession(): void
-    {
-        if (session_status() !== PHP_SESSION_ACTIVE) {
-            session_start([
-                'cookie_samesite' => 'Lax',
-                'cookie_secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
-                'cookie_httponly' => true,
-            ]);
-        }
-    }
-
     public static function generateToken(string $key): string
     {
-        self::ensureSession();
+        Session::start();
         $token = bin2hex(random_bytes(32));
         $_SESSION[self::SESSION_KEY][$key] = $token;
 
@@ -33,7 +22,7 @@ class Csrf
 
     public static function validateToken(string $key, ?string $token): bool
     {
-        self::ensureSession();
+        Session::start();
         $stored = $_SESSION[self::SESSION_KEY][$key] ?? null;
 
         if ($stored === null || $token === null) {

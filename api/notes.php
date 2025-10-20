@@ -7,15 +7,20 @@ use FlowState\Csrf;
 use FlowState\LinksRepo;
 use FlowState\NotesRepo;
 use FlowState\Response;
+use FlowState\Session;
 
 require_once __DIR__ . '/../src/Response.php';
 require_once __DIR__ . '/../src/Csrf.php';
 require_once __DIR__ . '/../src/LinksRepo.php';
 require_once __DIR__ . '/../src/NotesRepo.php';
 require_once __DIR__ . '/../src/TextUtil.php';
+require_once __DIR__ . '/../src/Session.php';
 
 $config = require __DIR__ . '/../config/config.php';
 $pdo = require __DIR__ . '/../config/database.php';
+
+Session::configure($config['session']['name']);
+Session::start();
 
 $linksRepo = new LinksRepo($pdo);
 $notesRepo = new NotesRepo($pdo, $linksRepo);
@@ -34,9 +39,9 @@ if ($action === 'reindexAll') {
         return;
     }
     $count = $notesRepo->reindexAll();
-    Response::json(['ok' => true, 'count' => $count]);
-    return;
-}
+        Response::json(['ok' => true, 'count' => $count]);
+        return;
+    }
 
 if ($method === 'GET') {
     $public = isset($_GET['public']) && (int) $_GET['public'] === 1;
@@ -48,7 +53,7 @@ if ($method === 'GET') {
 
     if (isset($_GET['search'])) {
         $results = $notesRepo->search((string) $_GET['search']);
-        Response::json(['results' => $results]);
+        Response::json(['ok' => true, 'results' => $results]);
         return;
     }
 
@@ -63,7 +68,7 @@ if ($method === 'GET') {
             $publicIds = array_column($notes, 'id');
             $links = array_values(array_filter($links, static fn ($l) => in_array($l['src_id'], $publicIds, true) && in_array($l['dst_id'], $publicIds, true)));
         }
-        Response::json(['nodes' => $notes, 'links' => $links]);
+        Response::json(['ok' => true, 'nodes' => $notes, 'links' => $links]);
         return;
     }
 
@@ -74,7 +79,7 @@ if ($method === 'GET') {
             return;
         }
         $related = $notesRepo->related((int) $note['id'], isset($_GET['limit']) ? (int) $_GET['limit'] : 10);
-        Response::json(['items' => $related]);
+        Response::json(['ok' => true, 'items' => $related]);
         return;
     }
 
@@ -85,7 +90,7 @@ if ($method === 'GET') {
             return;
         }
         $backlinks = $notesRepo->backlinks((int) $note['id']);
-        Response::json(['items' => $backlinks]);
+        Response::json(['ok' => true, 'items' => $backlinks]);
         return;
     }
 
@@ -115,6 +120,7 @@ if ($method === 'GET') {
     header('ETag: ' . $etag);
 
     Response::json([
+        'ok' => true,
         'note' => $note,
         'etag' => $etag,
         'related' => $notesRepo->related((int) $note['id']),
@@ -158,6 +164,7 @@ if ($method === 'POST') {
     ]);
 
     Response::json([
+        'ok' => true,
         'id' => $note['id'],
         'version' => $note['version'],
         'slug' => $note['slug'],
