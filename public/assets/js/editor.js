@@ -1,8 +1,6 @@
 (function () {
-  const DEBOUNCE_DELAY = 150;
-
   function escapeHtml(value) {
-    return value.replace(/[&<>"']/g, c => ({
+    return (value || '').replace(/[&<>"']/g, c => ({
       '&': '&amp;',
       '<': '&lt;',
       '>': '&gt;',
@@ -15,12 +13,8 @@
     return (value || '').replace(/\r\n?/g, '\n');
   }
 
-  function normalizeWhitespace(value) {
-    return value.replace(/\u00a0/g, ' ');
-  }
-
   function renderInline(text) {
-    let html = escapeHtml(text);
+    let html = escapeHtml(text || '');
 
     const codeTokens = [];
     html = html.replace(/`([^`]+)`/g, (_match, code) => {
@@ -47,7 +41,7 @@
   }
 
   function markdownToHtml(markdown) {
-    const normalized = normalizeMarkdown(markdown);
+    const normalized = normalizeMarkdown(markdown || '');
     if (!normalized.trim()) {
       return '';
     }
@@ -99,290 +93,169 @@
     return html;
   }
 
-  function serializeInline(node) {
-    let output = '';
-    node.childNodes.forEach(child => {
-      if (child.nodeType === Node.TEXT_NODE) {
-        output += normalizeWhitespace(child.nodeValue || '');
-        return;
-      }
-      if (child.nodeType !== Node.ELEMENT_NODE) {
-        return;
-      }
-      const tag = child.tagName.toLowerCase();
-      if (tag === 'br') {
-        output += '\n';
-        return;
-      }
-      if (tag === 'em') {
-        output += '*' + serializeInline(child) + '*';
-        return;
-      }
-      if (tag === 'strong') {
-        output += '**' + serializeInline(child) + '**';
-        return;
-      }
-      if (tag === 'code') {
-        const inner = normalizeWhitespace(child.textContent || '').replace(/`/g, '\\`');
-        output += '`' + inner + '`';
-        return;
-      }
-      if (tag === 'a' && child.classList.contains('wikilink')) {
-        const label = serializeInline(child).trim();
-        if (label) {
-          output += `[[${label}]]`;
-        }
-        return;
-      }
-      output += serializeInline(child);
-    });
-    return output;
-  }
-
-  function serializeBlock(node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = normalizeWhitespace(node.nodeValue || '');
-      if (text.trim() === '') {
-        return null;
-      }
-      return text.trim();
+  const FlowEditor = {
+    renderMarkdown(markdown) {
+      return markdownToHtml(markdown);
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) {
+  };
+
+  window.FlowStateEditor = FlowEditor;
+
+  const state = {
+    element: null,
+    simplemde: null,
+    options: {},
+    pendingValue: null,
+    readOnly: false,
+    silenceChange: false
+  };
+
+  function getContainer() {
+    if (!state.element) {
       return null;
     }
-    const tag = node.tagName.toLowerCase();
-    if (tag === 'h1') {
-      return '# ' + serializeInline(node).trim();
+    if (state.element.classList && state.element.classList.contains('note-editor')) {
+      return state.element;
     }
-    if (tag === 'h2') {
-      return '## ' + serializeInline(node).trim();
-    }
-    if (tag === 'h3') {
-      return '### ' + serializeInline(node).trim();
-    }
-    if (tag === 'ul') {
-      const items = [];
-      node.childNodes.forEach(child => {
-        if (child.nodeType === Node.ELEMENT_NODE && child.tagName.toLowerCase() === 'li') {
-          const itemContent = serializeInline(child).trim();
-          if (itemContent) {
-            items.push('- ' + itemContent);
-          }
-        }
-      });
-      return items.join('\n');
-    }
-    if (tag === 'p' || tag === 'div') {
-      const text = serializeInline(node).trim();
-      return text;
-    }
-    return serializeInline(node).trim();
+    return state.element.closest('.note-editor');
   }
 
-  function serializeMarkdown(root) {
-    if (!root) {
-      return '';
+  function applyAriaLabel() {
+    if (!state.simplemde || !state.element) {
+      return;
     }
-    const blocks = [];
-    root.childNodes.forEach(node => {
-      const block = serializeBlock(node);
-      if (block === null || block === undefined) {
-        return;
-      }
-      if (block === '') {
-        return;
-      }
-      blocks.push(block);
-    });
-    return blocks.join('\n\n');
+    const label = state.element.getAttribute('aria-label');
+    if (label) {
+      state.simplemde.codemirror.getInputField().setAttribute('aria-label', label);
+    }
   }
 
-  function captureSelectionOffsets(root) {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) {
-      return null;
-    }
-    const range = selection.getRangeAt(0);
-    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
-      return null;
-    }
-    const preStart = range.cloneRange();
-    preStart.selectNodeContents(root);
-    preStart.setEnd(range.startContainer, range.startOffset);
-    const start = preStart.toString().length;
-
-    const preEnd = range.cloneRange();
-    preEnd.selectNodeContents(root);
-    preEnd.setEnd(range.endContainer, range.endOffset);
-    const end = preEnd.toString().length;
-
-    return { start, end };
-  }
-
-  function findNodeForOffset(root, offset) {
-    let remaining = offset;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-    let node = walker.nextNode();
-    while (node) {
-      const length = node.nodeValue ? node.nodeValue.length : 0;
-      if (remaining <= length) {
-        return { node, offset: remaining };
-      }
-      remaining -= length;
-      node = walker.nextNode();
-    }
-    return { node: root, offset: root.childNodes.length };
-  }
-
-  function restoreSelection(root, selectionOffsets) {
-    if (!selectionOffsets) {
+  function applyReadOnly() {
+    if (!state.simplemde) {
       return;
     }
-    const selection = window.getSelection();
-    if (!selection) {
-      return;
-    }
-    const maxTextLength = (root.textContent || '').length;
-    const startOffset = Math.min(selectionOffsets.start, maxTextLength);
-    const endOffset = Math.min(selectionOffsets.end, maxTextLength);
-    const startTarget = findNodeForOffset(root, startOffset);
-    const endTarget = findNodeForOffset(root, endOffset);
-    const range = document.createRange();
-    range.setStart(startTarget.node, startTarget.offset);
-    range.setEnd(endTarget.node, endTarget.offset);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }
-
-  function updateEmptyState(element, markdown) {
-    const isEmpty = markdown.trim() === '';
-    element.classList.toggle('is-empty', isEmpty);
-  }
-
-  function applyRender(element, force) {
-    const state = element.__flowEditorState;
-    if (!state) {
-      return;
-    }
-    if (state.suspended) {
-      return;
-    }
-    if (state.isRendering) {
-      return;
-    }
-    const selectionOffsets = captureSelectionOffsets(element);
-    const markdown = serializeMarkdown(element);
-    if (!force && markdown === state.lastMarkdown) {
-      updateEmptyState(element, markdown);
-      return;
-    }
-    state.isRendering = true;
-    const html = markdownToHtml(markdown);
-    if (element.innerHTML !== html) {
-      element.innerHTML = html;
-    }
-    updateEmptyState(element, markdown);
-    state.lastMarkdown = markdown;
-    state.isRendering = false;
-    restoreSelection(element, selectionOffsets);
-    if (state.options && typeof state.options.onChange === 'function') {
-      if (force || markdown !== state.lastNotified) {
-        state.lastNotified = markdown;
-        state.options.onChange(markdown);
+    const cm = state.simplemde.codemirror;
+    cm.setOption('readOnly', state.readOnly ? 'nocursor' : false);
+    const container = getContainer();
+    if (container) {
+      container.classList.toggle('is-readonly', state.readOnly);
+      const toolbar = container.querySelector('.editor-toolbar');
+      if (toolbar) {
+        toolbar.classList.toggle('is-disabled', state.readOnly);
+        const controls = toolbar.querySelectorAll('a, button');
+        controls.forEach(control => {
+          control.setAttribute('aria-disabled', state.readOnly ? 'true' : 'false');
+          control.tabIndex = state.readOnly ? -1 : 0;
+          control.setAttribute('tabindex', state.readOnly ? '-1' : '0');
+          control.classList.toggle('is-disabled', state.readOnly);
+        });
       }
     }
-  }
-
-  function scheduleRender(element) {
-    const state = element.__flowEditorState;
-    if (!state) {
-      return;
-    }
-    clearTimeout(state.timer);
-    state.timer = window.setTimeout(() => applyRender(element, false), DEBOUNCE_DELAY);
-  }
-
-  function handlePaste(event) {
-    const element = event.currentTarget;
-    if (!element || element.getAttribute('contenteditable') === 'false') {
-      return;
-    }
-    event.preventDefault();
-    const text = event.clipboardData ? event.clipboardData.getData('text/plain') : '';
-    if (!text) {
-      return;
-    }
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) {
-      return;
-    }
-    selection.deleteFromDocument();
-    const range = selection.getRangeAt(0);
-    const node = document.createTextNode(text);
-    range.insertNode(node);
-    range.setStartAfter(node);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    scheduleRender(element);
   }
 
   function init(element, options = {}) {
-    if (!element) {
+    if (!element || typeof SimpleMDE !== 'function') {
       return null;
     }
-    const state = {
-      options,
-      timer: null,
-      isRendering: false,
-      suspended: false,
-      lastMarkdown: '',
-      lastNotified: ''
-    };
-    element.__flowEditorState = state;
-    element.addEventListener('input', () => scheduleRender(element));
-    element.addEventListener('paste', handlePaste);
-    element.addEventListener('blur', () => applyRender(element, true));
-    applyRender(element, true);
-    return {
-      renderNow: () => applyRender(element, true)
-    };
+    state.element = element;
+    state.options = options;
+    const placeholder = element.getAttribute('placeholder') || element.getAttribute('data-placeholder') || '';
+    state.simplemde = new SimpleMDE({
+      element: element,
+      spellChecker: false,
+      status: false,
+      autosave: false,
+      placeholder,
+      toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list", "ordered-list", "|", "link", "preview"],
+      renderingConfig: { singleLineBreaks: false, codeSyntaxHighlighting: true },
+      previewRender(plainText) {
+        return window.FlowStateEditor.renderMarkdown(plainText);
+      }
+    });
+
+    const cm = state.simplemde.codemirror;
+    cm.on('change', () => {
+      if (state.silenceChange) {
+        return;
+      }
+      if (typeof state.options.onChange === 'function') {
+        state.options.onChange(state.simplemde.value());
+      }
+    });
+
+    applyAriaLabel();
+    applyReadOnly();
+
+    if (state.pendingValue !== null && state.pendingValue !== undefined) {
+      setMarkdown(element, state.pendingValue);
+      state.pendingValue = null;
+    }
+
+    setTimeout(() => {
+      if (state.simplemde) {
+        state.simplemde.codemirror.refresh();
+      }
+    }, 0);
+
+    return state.simplemde;
   }
 
   function setMarkdown(element, markdown) {
-    if (!element) {
+    if (element && !state.element) {
+      state.element = element;
+    }
+    const value = normalizeMarkdown(markdown || '');
+    if (!state.simplemde) {
+      state.pendingValue = value;
+      if (element) {
+        element.value = value;
+      }
       return;
     }
-    const state = element.__flowEditorState;
-    const value = normalizeMarkdown(markdown || '');
-    if (state) {
-      state.suspended = true;
-    }
-    const html = markdownToHtml(value);
-    element.innerHTML = html;
-    updateEmptyState(element, value);
-    if (state) {
-      if (state.timer) {
-        clearTimeout(state.timer);
-        state.timer = null;
-      }
-      state.lastMarkdown = value;
-      state.lastNotified = value;
-      state.suspended = false;
+    const cm = state.simplemde.codemirror;
+    const hasFocus = cm.hasFocus();
+    const cursor = cm.getCursor();
+    state.silenceChange = true;
+    state.simplemde.value(value);
+    state.silenceChange = false;
+    if (hasFocus) {
+      cm.focus();
+      cm.setCursor(cursor);
     }
   }
 
-  function getMarkdown(element) {
-    if (!element) {
-      return '';
+  function getMarkdown() {
+    if (state.simplemde) {
+      return normalizeMarkdown(state.simplemde.value() || '').trimEnd();
     }
-    const markdown = serializeMarkdown(element);
-    return normalizeMarkdown(markdown).trimEnd();
+    return normalizeMarkdown(state.pendingValue || '').trimEnd();
   }
 
-  window.FlowStateEditor = {
-    init,
-    setMarkdown,
-    getMarkdown
-  };
+  function setReadOnly(value) {
+    state.readOnly = !!value;
+    applyReadOnly();
+  }
+
+  function scrollToTop() {
+    if (!state.simplemde) {
+      return;
+    }
+    const cm = state.simplemde.codemirror;
+    cm.scrollTo(null, 0);
+    cm.setCursor({ line: 0, ch: 0 });
+  }
+
+  function focus() {
+    if (!state.simplemde) {
+      return;
+    }
+    state.simplemde.codemirror.focus();
+  }
+
+  FlowEditor.init = init;
+  FlowEditor.setMarkdown = setMarkdown;
+  FlowEditor.getMarkdown = getMarkdown;
+  FlowEditor.setReadOnly = setReadOnly;
+  FlowEditor.scrollToTop = scrollToTop;
+  FlowEditor.focus = focus;
 }());

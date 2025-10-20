@@ -4,7 +4,7 @@
   const elements = {
     title: document.getElementById('note-title'),
     tags: document.getElementById('note-tags'),
-    content: document.getElementById('note-editor'),
+    content: document.getElementById('note-content'),
     related: document.getElementById('related-list'),
     backlinks: document.getElementById('backlinks-list'),
     save: document.getElementById('save-button'),
@@ -31,9 +31,7 @@
   }
 
   function resetScrollPositions() {
-    if (elements.content) {
-      elements.content.scrollTop = 0;
-    }
+    window.FlowStateEditor.scrollToTop();
   }
 
   async function bootstrap() {
@@ -50,17 +48,13 @@
       elements.publish.style.display = 'none';
       elements.title.disabled = true;
       elements.tags.disabled = true;
-      if (elements.content) {
-        elements.content.setAttribute('contenteditable', 'false');
-      }
+      window.FlowStateEditor.setReadOnly(true);
       if (elements.topActions) {
         elements.topActions.style.display = 'none';
       }
       elements.syncStatus.textContent = 'Public view';
     } else {
-      if (elements.content) {
-        elements.content.setAttribute('contenteditable', 'true');
-      }
+      window.FlowStateEditor.setReadOnly(false);
       const session = await window.FlowStateApi.session();
       if (!session.auth) {
         window.location.href = 'login.php';
