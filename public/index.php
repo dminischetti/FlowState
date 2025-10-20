@@ -48,12 +48,15 @@ $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_
                 </div>
                 <div class="editor-body">
                     <section class="workspace-pane editor-pane">
-                        <textarea id="note-content" placeholder="Write in Markdown…" aria-label="Note content"></textarea>
-                    </section>
-                    <section class="workspace-pane preview-pane" aria-live="polite">
-                        <div class="pane-scroll" id="preview-scroll">
-                            <article id="preview"></article>
-                        </div>
+                        <div
+                            id="note-editor"
+                            class="note-editor"
+                            contenteditable="true"
+                            role="textbox"
+                            aria-multiline="true"
+                            aria-label="Note content"
+                            data-placeholder="Write in Markdown…"
+                        ></div>
                     </section>
                 </div>
                 <footer class="editor-footer">
