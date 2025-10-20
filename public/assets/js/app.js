@@ -7,10 +7,6 @@
     content: document.getElementById('note-content'),
     preview: document.getElementById('preview'),
     previewScroll: document.getElementById('preview-scroll'),
-    translationOutput: document.getElementById('translation-output'),
-    translationStatus: document.getElementById('translation-status'),
-    translationLanguage: document.getElementById('translation-language'),
-    translationScroll: document.getElementById('translation-scroll'),
     related: document.getElementById('related-list'),
     backlinks: document.getElementById('backlinks-list'),
     save: document.getElementById('save-button'),
@@ -32,134 +28,10 @@
     outbox: 0
   };
 
-  /* LIVE TRANSLATION: start */
-  const TRANSLATION_PLACEHOLDER = 'Start typing to see the translation.';
-  const translationState = {
-    timer: 0,
-    controller: null,
-    lastText: '',
-    lastLang: ''
-  };
-  const translationLanguageNames = {
-    en: 'English',
-    it: 'Italiano'
-  };
-
-  function setTranslationStatus(message) {
-    if (elements.translationStatus) {
-      elements.translationStatus.textContent = message;
-    }
-  }
-
-  function getLanguageName(lang) {
-    return translationLanguageNames[lang] || lang;
-  }
-
-  function getTranslatableText() {
-    const title = elements.title ? elements.title.value : '';
-    const body = elements.content ? elements.content.value : '';
-    if (!title.trim() && !body.trim()) {
-      return '';
-    }
-    return `# ${title}\n\n${body}`;
-  }
-
-  function scheduleTranslation(immediate = false) {
-    if (!elements.translationOutput || !elements.translationLanguage) {
-      return;
-    }
-    const lang = elements.translationLanguage.value || 'en';
-    const text = getTranslatableText();
-    if (translationState.timer) {
-      window.clearTimeout(translationState.timer);
-      translationState.timer = 0;
-    }
-    if (translationState.controller) {
-      translationState.controller.abort();
-      translationState.controller = null;
-    }
-    if (!text.trim()) {
-      translationState.lastText = '';
-      translationState.lastLang = lang;
-      elements.translationOutput.textContent = TRANSLATION_PLACEHOLDER;
-      setTranslationStatus('Ready');
-      return;
-    }
-    if (!immediate && text === translationState.lastText && lang === translationState.lastLang) {
-      setTranslationStatus(`Translated to ${getLanguageName(lang)}`);
-      return;
-    }
-    if (immediate) {
-      performTranslation(text, lang);
-      return;
-    }
-    setTranslationStatus('Preparing translation…');
-    translationState.timer = window.setTimeout(() => {
-      translationState.timer = 0;
-      performTranslation(text, lang);
-    }, 480);
-  }
-
-  async function performTranslation(text, lang) {
-    if (!elements.translationOutput) {
-      return;
-    }
-    if (translationState.controller) {
-      translationState.controller.abort();
-    }
-    const controller = new AbortController();
-    translationState.controller = controller;
-    setTranslationStatus('Translating…');
-    try {
-      const res = await window.FlowStateApi.translate(text, lang, controller.signal);
-      if (!res || res.error || (res.__status && res.__status >= 400)) {
-        if (res && res.error) {
-          console.warn('Translation error', res.error);
-        }
-        handleTranslationError('Translation temporarily unavailable.');
-        return;
-      }
-      const translated = typeof res.translated === 'string' ? res.translated : '';
-      handleTranslationSuccess(text, lang, translated);
-    } catch (err) {
-      if (controller.signal.aborted) {
-        return;
-      }
-      handleTranslationError('Translation unavailable offline.');
-    } finally {
-      if (translationState.controller === controller) {
-        translationState.controller = null;
-      }
-    }
-  }
-
-  function handleTranslationSuccess(text, lang, translated) {
-    const langName = getLanguageName(lang);
-    translationState.lastText = text;
-    translationState.lastLang = lang;
-    if (!translated.trim()) {
-      elements.translationOutput.textContent = 'Translation temporarily unavailable.';
-      setTranslationStatus('Translation unavailable');
-      return;
-    }
-    elements.translationOutput.textContent = translated;
-    setTranslationStatus(`Translated to ${langName}`);
-  }
-
-  function handleTranslationError(message) {
-    translationState.lastText = '';
-    translationState.lastLang = '';
-    if (elements.translationOutput) {
-      elements.translationOutput.textContent = message;
-    }
-    setTranslationStatus('Translation unavailable');
-  }
-  /* LIVE TRANSLATION: end */
-
   const scrollSyncState = { active: false };
 
   function setupScrollSync() {
-    const scrollables = [elements.content, elements.previewScroll, elements.translationScroll].filter(Boolean);
+    const scrollables = [elements.content, elements.previewScroll].filter(Boolean);
     if (!scrollables.length) {
       return;
     }
@@ -174,7 +46,7 @@
     }
     scrollSyncState.active = true;
     const ratio = getScrollRatio(source);
-    const peers = [elements.content, elements.previewScroll, elements.translationScroll].filter(Boolean);
+    const peers = [elements.content, elements.previewScroll].filter(Boolean);
     for (const el of peers) {
       if (el === source) {
         continue;
@@ -211,7 +83,7 @@
   }
 
   function resetScrollPositions() {
-    [elements.content, elements.previewScroll, elements.translationScroll].forEach(el => {
+    [elements.content, elements.previewScroll].forEach(el => {
       if (el) {
         el.scrollTop = 0;
       }
@@ -260,9 +132,6 @@
     elements.content.addEventListener('input', handleContentChange);
     elements.title.addEventListener('input', () => updatePreview());
     elements.tags.addEventListener('input', () => updatePreview());
-    if (elements.translationLanguage) {
-      elements.translationLanguage.addEventListener('change', () => scheduleTranslation(true));
-    }
     elements.save.addEventListener('click', saveNote);
     elements.publish.addEventListener('click', togglePublish);
     elements.graphToggle.addEventListener('click', toggleGraph);
@@ -324,7 +193,7 @@
       elements.content.value = res.note.content;
       elements.publish.dataset.public = res.note.is_public;
       elements.publish.textContent = res.note.is_public ? 'Public' : 'Private';
-      updatePreview(true);
+      updatePreview();
       resetScrollPositions();
       populateList(elements.related, res.related);
       populateList(elements.backlinks, res.backlinks);
@@ -336,7 +205,7 @@
         elements.title.value = cached.title;
         elements.tags.value = cached.tags || '';
         elements.content.value = cached.content;
-        updatePreview(true);
+        updatePreview();
         resetScrollPositions();
         showToast('Offline mode: showing cached note');
       } else {
@@ -367,11 +236,10 @@
     updatePreview();
   }
 
-  function updatePreview(forceTranslate = false) {
+  function updatePreview() {
     const text = elements.content.value;
     const html = window.FlowStateEditor.renderMarkdown(`# ${elements.title.value}\n\n${text}`);
     elements.preview.innerHTML = html;
-    scheduleTranslation(forceTranslate);
   }
 
   async function saveNote() {

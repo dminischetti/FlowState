@@ -55,22 +55,6 @@ $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_
                             <article id="preview"></article>
                         </div>
                     </section>
-                    <section class="workspace-pane translation-pane" aria-labelledby="translation-title">
-                        <header class="translation-header">
-                            <h2 id="translation-title">Translation</h2>
-                            <div class="translation-controls">
-                                <label for="translation-language">Target</label>
-                                <select id="translation-language" aria-label="Target language">
-                                    <option value="en">English</option>
-                                    <option value="it">Italiano</option>
-                                </select>
-                            </div>
-                            <span id="translation-status" class="translation-status" aria-live="polite">Ready</span>
-                        </header>
-                        <div class="pane-scroll" id="translation-scroll">
-                            <article id="translation-output" aria-live="polite">Start typing to see the translation.</article>
-                        </div>
-                    </section>
                 </div>
                 <footer class="editor-footer">
                     <button id="save-button" class="btn primary">Save ⌘S</button>

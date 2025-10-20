@@ -111,13 +111,6 @@
         method: 'GET',
         headers: { 'X-CSRF-Token': token }
       });
-    },
-    async translate(text, targetLang, signal) {
-      return request('/translate.php', {
-        method: 'POST',
-        body: JSON.stringify({ text, targetLang }),
-        signal
-      });
     }
   };
 
