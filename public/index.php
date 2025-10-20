@@ -2,7 +2,29 @@
 
 declare(strict_types=1);
 
+use FlowState\Auth;
+use FlowState\Session;
+
+require_once __DIR__ . '/../src/Auth.php';
+require_once __DIR__ . '/../src/Session.php';
+
+$config = require __DIR__ . '/../config/config.php';
+$pdo = require __DIR__ . '/../config/database.php';
+
+Session::configure($config['session']['name']);
+Session::start();
+
 $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_GET['p']) : null;
+
+$auth = new Auth($pdo, $config['session']['name']);
+$isAuthenticated = $auth->check();
+if ($publicSlug === null && !$isAuthenticated) {
+    header('Location: login.php');
+    exit;
+}
+
+$apiBase = $config['app']['api_base'] ?? '/api';
+$swPath = $config['app']['sw_path'] ?? 'sw.js';
 ?><!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -25,7 +47,12 @@ $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_
     <link rel="stylesheet" href="assets/css/app.css">
     <meta name="theme-color" content="#ffffff">
 </head>
-<body data-public="<?= $publicSlug !== null ? '1' : '0'; ?>" data-slug="<?= htmlspecialchars((string) $publicSlug, ENT_QUOTES); ?>">
+<body
+    data-public="<?= $publicSlug !== null ? '1' : '0'; ?>"
+    data-slug="<?= htmlspecialchars((string) $publicSlug, ENT_QUOTES); ?>"
+    data-api-base="<?= htmlspecialchars($apiBase, ENT_QUOTES); ?>"
+    data-sw-path="<?= htmlspecialchars($swPath, ENT_QUOTES); ?>"
+>
     <div id="app-shell">
         <header class="top-bar">
             <button class="btn ghost" id="graph-toggle" aria-expanded="false">☰ Graph</button>

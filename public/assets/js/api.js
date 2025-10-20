@@ -1,37 +1,94 @@
 (function () {
-  const API_BASE = '/api';
+  const root = typeof document !== 'undefined' ? document.body : null;
+  const API_BASE = (root && root.dataset.apiBase) || '/api';
   let csrfToken = null;
+  let debug = false;
+  try {
+    debug = typeof localStorage !== 'undefined' && localStorage.getItem('flowstate-debug') === '1';
+  } catch (err) {
+    debug = false;
+  }
+
+  function logDebug(...args) {
+    if (debug) {
+      console.debug('[FlowStateApi]', ...args);
+    }
+  }
 
   async function ensureCsrf() {
     if (csrfToken) {
       return csrfToken;
     }
-    const res = await fetch(`${API_BASE}/auth.php?action=csrf`, { credentials: 'include' });
-    const data = await res.json();
-    csrfToken = data.csrf;
-    return csrfToken;
+    try {
+      const res = await fetch(`${API_BASE}/auth.php?action=csrf`, {
+        credentials: 'include',
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to obtain CSRF token (${res.status})`);
+      }
+      const data = await res.json();
+      csrfToken = data.csrf;
+      logDebug('Fetched CSRF token');
+      return csrfToken;
+    } catch (error) {
+      logDebug('CSRF fetch error', error);
+      throw error;
+    }
   }
 
   async function request(path, options = {}) {
-    const headers = options.headers || {};
+    const opts = { ...options };
+    const headers = { ...(opts.headers || {}) };
     headers['Accept'] = 'application/json';
-    if (options.body && !(options.body instanceof FormData)) {
+    if (opts.body && !(opts.body instanceof FormData)) {
+      if (typeof opts.body !== 'string') {
+        opts.body = JSON.stringify(opts.body);
+      }
       headers['Content-Type'] = 'application/json';
     }
-    options.headers = headers;
-    options.credentials = 'include';
+    opts.headers = headers;
+    opts.credentials = 'include';
 
-    const res = await fetch(`${API_BASE}${path}`, options);
-    if (res.status === 204) {
-      return null;
+    let res;
+    try {
+      res = await fetch(`${API_BASE}${path}`, opts);
+    } catch (error) {
+      logDebug('Network error', error);
+      const err = new Error('network_error');
+      err.cause = error;
+      throw err;
     }
+
+    if (res.status === 204) {
+      return { ok: true, __status: res.status };
+    }
+
     const contentType = res.headers.get('content-type') || '';
+    let data = null;
     if (contentType.includes('application/json')) {
-      const data = await res.json();
+      try {
+        data = await res.json();
+      } catch (error) {
+        logDebug('Failed to parse JSON', error);
+      }
+    }
+
+    if (data && typeof data === 'object') {
       data.__status = res.status;
+      if (typeof data.ok === 'undefined') {
+        data.ok = res.ok;
+      }
+      if (res.status === 401) {
+        data.unauthorized = true;
+      }
+      if (data.error === 'invalid_csrf') {
+        csrfToken = null;
+      }
       return data;
     }
-    return { __status: res.status };
+
+    return { ok: res.ok, __status: res.status, unauthorized: res.status === 401 };
   }
 
   const FlowStateApi = {
@@ -41,11 +98,13 @@
     async login(email, password) {
       return request('/auth.php', {
         method: 'POST',
-        body: JSON.stringify({ email, password })
+        body: { email, password }
       });
     },
     async logout() {
-      return request('/auth.php?action=logout', { method: 'POST' });
+      const res = await request('/auth.php?action=logout', { method: 'POST' });
+      csrfToken = null;
+      return res;
     },
     async getNoteBySlug(slug, isPublic = false) {
       const params = new URLSearchParams();
@@ -80,7 +139,7 @@
       return request('/notes.php', {
         method: 'POST',
         headers: { 'X-CSRF-Token': token },
-        body: JSON.stringify(payload)
+        body: payload
       });
     },
     async updateNote(id, payload, etag) {
@@ -88,7 +147,7 @@
       return request(`/notes.php?id=${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: { 'X-CSRF-Token': token, 'If-Match': etag },
-        body: JSON.stringify(payload)
+        body: payload
       });
     },
     async deleteNote(id) {

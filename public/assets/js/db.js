@@ -1,4 +1,17 @@
 (function () {
+  if (!('indexedDB' in window)) {
+    console.warn('IndexedDB not supported; offline cache disabled.');
+    window.FlowStateDB = {
+      async saveNoteLocally() {},
+      async getNoteLocally() { return null; },
+      async queueMutation() {},
+      async fetchOutbox() { return []; },
+      async clearMutation() {},
+      async syncOutbox() { return true; }
+    };
+    return;
+  }
+
   const DB_NAME = 'flowstate-db';
   const DB_VERSION = 1;
   let dbPromise = null;
@@ -68,9 +81,23 @@
     for (const entry of entries) {
       try {
         if (entry.type === 'update') {
-          await window.FlowStateApi.updateNote(entry.idValue, entry.payload, entry.etag);
+          const res = await window.FlowStateApi.updateNote(entry.idValue, entry.payload, entry.etag);
+          if (res && res.unauthorized) {
+            return 'unauthorized';
+          }
+          if (!res || !res.ok) {
+            console.warn('Skipping outbox entry', res);
+            continue;
+          }
         } else if (entry.type === 'create') {
-          await window.FlowStateApi.createNote(entry.payload);
+          const res = await window.FlowStateApi.createNote(entry.payload);
+          if (res && res.unauthorized) {
+            return 'unauthorized';
+          }
+          if (!res || !res.ok) {
+            console.warn('Skipping outbox entry', res);
+            continue;
+          }
         }
         await clearMutation(entry.id);
       } catch (err) {

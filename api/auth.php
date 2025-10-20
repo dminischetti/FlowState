@@ -5,13 +5,18 @@ declare(strict_types=1);
 use FlowState\Auth;
 use FlowState\Csrf;
 use FlowState\Response;
+use FlowState\Session;
 
 require_once __DIR__ . '/../src/Response.php';
 require_once __DIR__ . '/../src/Csrf.php';
 require_once __DIR__ . '/../src/Auth.php';
+require_once __DIR__ . '/../src/Session.php';
 
 $config = require __DIR__ . '/../config/config.php';
 $pdo = require __DIR__ . '/../config/database.php';
+
+Session::configure($config['session']['name']);
+Session::start();
 
 $auth = new Auth($pdo, $config['session']['name']);
 
@@ -21,6 +26,7 @@ $action = $_GET['action'] ?? null;
 if ($method === 'GET') {
     if ($action === 'session') {
         Response::json([
+            'ok' => true,
             'auth' => $auth->check(),
             'email' => $auth->email(),
         ]);
@@ -29,7 +35,7 @@ if ($method === 'GET') {
 
     if ($action === 'csrf') {
         $token = Csrf::generateToken('api');
-        Response::json(['csrf' => $token]);
+        Response::json(['ok' => true, 'csrf' => $token]);
         return;
     }
 

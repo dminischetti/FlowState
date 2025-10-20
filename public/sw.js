@@ -1,15 +1,17 @@
 const CACHE_NAME = 'fs-v1';
-const SHELL = [
-  '/',
-  '/index.php',
-  '/assets/css/app.css',
-  '/assets/js/app.js',
-  '/assets/js/api.js',
-  '/assets/js/db.js',
-  '/assets/js/editor.js',
-  '/assets/js/graph.js',
-  '/manifest.webmanifest'
+const scopeUrl = new URL(self.registration.scope);
+const shellEntries = [
+  './',
+  './index.php',
+  './assets/css/app.css',
+  './assets/js/app.js',
+  './assets/js/api.js',
+  './assets/js/db.js',
+  './assets/js/editor.js',
+  './assets/js/graph.js',
+  './manifest.webmanifest'
 ];
+const SHELL = shellEntries.map(path => new URL(path, scopeUrl).pathname);
 
 self.addEventListener('install', event => {
   event.waitUntil(

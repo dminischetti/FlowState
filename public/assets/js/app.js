@@ -1,6 +1,9 @@
 (function () {
-  const isPublic = document.body.dataset.public === '1';
-  const initialSlug = document.body.dataset.slug || null;
+  const body = document.body;
+  const isPublic = body.dataset.public === '1';
+  const initialSlug = body.dataset.slug || null;
+  const swPath = body.dataset.swPath || 'sw.js';
+
   const elements = {
     title: document.getElementById('note-title'),
     tags: document.getElementById('note-tags'),
@@ -19,51 +22,66 @@
     topActions: document.querySelector('.top-actions'),
     saveFooter: document.querySelector('.editor-footer')
   };
-  const graph = new window.FlowStateGraph(document.getElementById('graph-canvas'));
+
+  const graphCanvas = document.getElementById('graph-canvas');
+  const graph = graphCanvas && window.FlowStateGraph ? new window.FlowStateGraph(graphCanvas) : null;
+
   const state = {
     current: null,
     etag: null,
-    outbox: 0
+    outbox: 0,
+    autosaveTimer: null,
+    saveInFlight: false,
+    pendingPayload: null,
+    dirty: false,
+    graphData: null
   };
 
   if (elements.content) {
-    window.FlowStateEditor.init(elements.content);
+    window.FlowStateEditor.init(elements.content, { onChange: handleEditorChange });
   }
 
-  function resetScrollPositions() {
-    window.FlowStateEditor.scrollToTop();
-  }
+  bootstrap();
 
   async function bootstrap() {
     if ('serviceWorker' in navigator) {
       try {
-        await navigator.serviceWorker.register('sw.js');
+        await navigator.serviceWorker.register(swPath);
       } catch (err) {
         console.warn('SW registration failed', err);
       }
     }
 
-    if (isPublic) {
-      elements.save.style.display = 'none';
-      elements.publish.style.display = 'none';
-      elements.title.disabled = true;
-      elements.tags.disabled = true;
-      window.FlowStateEditor.setReadOnly(true);
-      if (elements.topActions) {
-        elements.topActions.style.display = 'none';
-      }
-      elements.syncStatus.textContent = 'Public view';
-    } else {
-      window.FlowStateEditor.setReadOnly(false);
-      const session = await window.FlowStateApi.session();
-      if (!session.auth) {
-        window.location.href = 'login.php';
-        return;
-      }
+    if (graph) {
+      graph.onOpen = slug => navigateTo(slug);
     }
 
     attachEvents();
+
+    if (isPublic) {
+      preparePublicView();
+    } else {
+      const sessionOk = await ensureSession();
+      if (!sessionOk) {
+        return;
+      }
+      window.FlowStateEditor.setReadOnly(false);
+      try {
+        const pending = await window.FlowStateDB.fetchOutbox();
+        state.outbox = Array.isArray(pending) ? pending.length : 0;
+        updateOutboxBubble();
+      } catch (err) {
+        console.warn('Unable to inspect outbox', err);
+      }
+      if (navigator.onLine) {
+        await syncOutbox();
+      } else {
+        updateSyncStatus('Offline', 'pending');
+      }
+    }
+
     await loadGraph();
+
     if (initialSlug) {
       await loadNoteBySlug(initialSlug, isPublic);
       window.location.hash = '#/n/' + initialSlug;
@@ -74,22 +92,72 @@
 
   function attachEvents() {
     window.addEventListener('hashchange', handleRoute);
-    elements.save.addEventListener('click', saveNote);
-    elements.publish.addEventListener('click', togglePublish);
-    elements.graphToggle.addEventListener('click', toggleGraph);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    if (elements.save) {
+      elements.save.addEventListener('click', () => saveNote({ source: 'manual' }));
+    }
+    if (elements.publish) {
+      elements.publish.addEventListener('click', togglePublish);
+    }
+    if (elements.graphToggle) {
+      elements.graphToggle.addEventListener('click', toggleGraph);
+    }
     document.addEventListener('keydown', handleGlobalKeys);
-    window.addEventListener('online', syncOutbox);
-    graph.onOpen = slug => navigateTo(slug);
 
-    elements.cmdkInput.addEventListener('input', debounce(handleSearch, 150));
-    elements.cmdkResults.addEventListener('click', event => {
-      const li = event.target.closest('li');
-      if (!li) {
-        return;
+    if (elements.cmdkInput) {
+      elements.cmdkInput.addEventListener('input', debounce(handleSearch, 150));
+    }
+    if (elements.cmdkResults) {
+      elements.cmdkResults.addEventListener('click', event => {
+        const li = event.target.closest('li');
+        if (!li) {
+          return;
+        }
+        selectCmdkItem(li.dataset.slug, li.dataset.create === '1');
+      });
+    }
+  }
+
+  function preparePublicView() {
+    if (elements.save) {
+      elements.save.style.display = 'none';
+    }
+    if (elements.publish) {
+      elements.publish.style.display = 'none';
+    }
+    if (elements.title) {
+      elements.title.disabled = true;
+    }
+    if (elements.tags) {
+      elements.tags.disabled = true;
+    }
+    window.FlowStateEditor.setReadOnly(true);
+    if (elements.topActions) {
+      elements.topActions.style.display = 'none';
+    }
+    updateSyncStatus('Public view');
+  }
+
+  async function ensureSession() {
+    try {
+      const session = await window.FlowStateApi.session();
+      if (session && session.auth) {
+        return true;
       }
-      selectCmdkItem(li.dataset.slug, li.dataset.create === '1');
-    });
-
+      window.location.href = 'login.php';
+      return false;
+    } catch (err) {
+      console.warn('Session check failed', err);
+      if (!navigator.onLine) {
+        updateSyncStatus('Offline', 'pending');
+        showToast('Offline mode. Changes will sync when you reconnect.');
+        return true;
+      }
+      window.location.href = 'login.php';
+      return false;
+    }
   }
 
   function handleRoute() {
@@ -101,59 +169,120 @@
   }
 
   async function loadGraph() {
+    if (!graph) {
+      return;
+    }
     try {
       const data = await window.FlowStateApi.graph(isPublic);
+      if (data && data.unauthorized) {
+        window.location.href = 'login.php';
+        return;
+      }
+      state.graphData = data;
       graph.setData(data.nodes || [], data.links || []);
     } catch (err) {
       console.warn('Graph load failed', err);
+      showToast('Unable to load graph');
     }
   }
 
   async function openFirstNote() {
-    const data = await window.FlowStateApi.graph(isPublic);
-    if (data.nodes && data.nodes.length) {
-      navigateTo(data.nodes[0].slug);
+    if (state.graphData && Array.isArray(state.graphData.nodes) && state.graphData.nodes.length) {
+      navigateTo(state.graphData.nodes[0].slug);
+      return;
+    }
+    try {
+      const data = await window.FlowStateApi.graph(isPublic);
+      if (data && data.unauthorized) {
+        window.location.href = 'login.php';
+        return;
+      }
+      state.graphData = data;
+      if (data.nodes && data.nodes.length) {
+        navigateTo(data.nodes[0].slug);
+      }
+    } catch (err) {
+      console.warn('Failed to open first note', err);
     }
   }
 
   function navigateTo(slug) {
+    if (!slug) {
+      return;
+    }
     window.location.hash = '#/n/' + encodeURIComponent(slug);
   }
 
   async function loadNoteBySlug(slug, publicMode) {
+    clearAutosaveTimer();
+    state.pendingPayload = null;
+    state.saveInFlight = false;
+    state.dirty = false;
+
     try {
       const res = await window.FlowStateApi.getNoteBySlug(slug, publicMode);
-      if (res.error) {
+      if (res && res.unauthorized) {
+        window.location.href = 'login.php';
+        return;
+      }
+      if (!res || res.error || !res.note) {
+        state.current = null;
         showToast('Note not found');
         return;
       }
       state.current = res.note;
       state.etag = res.etag;
-      elements.title.value = res.note.title;
-      elements.tags.value = res.note.tags || '';
+      if (elements.title) {
+        elements.title.value = res.note.title || '';
+        elements.title.disabled = isPublic;
+      }
+      if (elements.tags) {
+        elements.tags.value = res.note.tags || '';
+        elements.tags.disabled = isPublic;
+      }
       window.FlowStateEditor.setMarkdown(elements.content, res.note.content || '');
-      elements.publish.dataset.public = res.note.is_public;
-      elements.publish.textContent = res.note.is_public ? 'Public' : 'Private';
+      if (elements.publish) {
+        elements.publish.dataset.public = String(res.note.is_public);
+        elements.publish.textContent = res.note.is_public ? 'Public' : 'Private';
+      }
       resetScrollPositions();
       populateList(elements.related, res.related);
       populateList(elements.backlinks, res.backlinks);
-      window.FlowStateDB.saveNoteLocally(res.note);
+      updateSyncStatus(isPublic ? 'Public view' : 'All changes synced');
+      try {
+        await window.FlowStateDB.saveNoteLocally(res.note);
+      } catch (err) {
+        console.warn('Failed to cache note locally', err);
+      }
     } catch (err) {
-      console.error(err);
+      console.error('Load note failed', err);
       const cached = await window.FlowStateDB.getNoteLocally(slug);
       if (cached) {
-        elements.title.value = cached.title;
-        elements.tags.value = cached.tags || '';
+        if (elements.title) {
+          elements.title.value = cached.title || '';
+        }
+        if (elements.tags) {
+          elements.tags.value = cached.tags || '';
+        }
         window.FlowStateEditor.setMarkdown(elements.content, cached.content || '');
         resetScrollPositions();
         showToast('Offline mode: showing cached note');
+        updateSyncStatus('Offline', 'pending');
       } else {
         showToast('Unable to load note');
+        updateSyncStatus('Load failed', 'error');
       }
     }
   }
 
+  function resetScrollPositions() {
+    window.FlowStateEditor.scrollToTop();
+  }
+
   function populateList(container, items) {
+    if (!container) {
+      return;
+    }
     container.innerHTML = '';
     if (!items || items.length === 0) {
       const li = document.createElement('li');
@@ -171,60 +300,143 @@
     }
   }
 
-  async function saveNote() {
+  function collectPayload() {
+    return {
+      title: elements.title ? (elements.title.value.trim() || 'Untitled') : 'Untitled',
+      content: window.FlowStateEditor.getMarkdown(),
+      tags: elements.tags ? elements.tags.value.trim() : ''
+    };
+  }
+
+  function handleEditorChange() {
     if (isPublic) {
       return;
     }
-    const payload = {
-      title: elements.title.value.trim() || 'Untitled',
-      content: window.FlowStateEditor.getMarkdown(elements.content),
-      tags: elements.tags.value.trim()
-    };
+    state.dirty = true;
+    updateSyncStatus('Unsaved changes…', 'pending');
+    scheduleAutosave();
+  }
 
-    if (!state.current) {
-      await createNote(payload);
+  function scheduleAutosave() {
+    if (state.autosaveTimer) {
+      clearTimeout(state.autosaveTimer);
+    }
+    state.autosaveTimer = window.setTimeout(() => {
+      state.autosaveTimer = null;
+      if (state.current) {
+        saveNote({ source: 'autosave' });
+      }
+    }, 1200);
+  }
+
+  function clearAutosaveTimer() {
+    if (state.autosaveTimer) {
+      clearTimeout(state.autosaveTimer);
+      state.autosaveTimer = null;
+    }
+  }
+
+  async function saveNote(options = {}) {
+    if (isPublic) {
       return;
     }
 
+    const payload = options.payload || collectPayload();
+
+    if (!state.current) {
+      await createNote(payload, options);
+      return;
+    }
+
+    if (state.saveInFlight) {
+      state.pendingPayload = payload;
+      return;
+    }
+
+    state.saveInFlight = true;
+    updateSyncStatus('Saving…', 'pending');
+
     try {
-      elements.syncStatus.textContent = 'Saving…';
       const res = await window.FlowStateApi.updateNote(state.current.id, payload, state.etag);
+      if (res && res.unauthorized) {
+        window.location.href = 'login.php';
+        return;
+      }
       if (res && res.error === 'version_conflict') {
         showToast('Version conflict. Refresh note.');
-        elements.syncStatus.textContent = 'Conflict';
+        updateSyncStatus('Conflict', 'error');
+        state.saveInFlight = false;
         return;
       }
       if (res && res.ok) {
         state.etag = res.etag;
-        elements.syncStatus.textContent = 'Saved';
         state.current = { ...state.current, ...payload, version: res.version };
-        window.FlowStateDB.saveNoteLocally(state.current);
+        try {
+          await window.FlowStateDB.saveNoteLocally(state.current);
+        } catch (err) {
+          console.warn('Failed to cache note after save', err);
+        }
+        updateSyncStatus('Saved', 'success');
+        state.dirty = false;
         await loadGraph();
       } else if (res && res.error) {
         showToast(res.error);
+        updateSyncStatus('Save failed', 'error');
       }
     } catch (err) {
       console.warn('Save failed, queueing offline', err);
-      elements.syncStatus.textContent = 'Queued for sync';
-      await window.FlowStateDB.queueMutation({ type: 'update', idValue: state.current.id, payload, etag: state.etag });
-      state.outbox += 1;
-      updateOutboxBubble();
+      updateSyncStatus('Queued for sync', 'pending');
+      try {
+        await window.FlowStateDB.queueMutation({ type: 'update', idValue: state.current.id, payload, etag: state.etag });
+        state.outbox += 1;
+        updateOutboxBubble();
+      } catch (dbErr) {
+        console.error('Failed to queue mutation', dbErr);
+        updateSyncStatus('Queue failed', 'error');
+      }
+    } finally {
+      state.saveInFlight = false;
+    }
+
+    if (state.pendingPayload) {
+      const nextPayload = state.pendingPayload;
+      state.pendingPayload = null;
+      await saveNote({ payload: nextPayload, source: 'autosave' });
     }
   }
 
-  async function createNote(payload) {
+  async function createNote(payload, options = {}) {
+    if (state.saveInFlight) {
+      state.pendingPayload = payload;
+      return;
+    }
+    state.saveInFlight = true;
+    updateSyncStatus('Creating…', 'pending');
     try {
       const res = await window.FlowStateApi.createNote(payload);
-      if (res && res.id) {
+      if (res && res.unauthorized) {
+        window.location.href = 'login.php';
+        return;
+      }
+      if (res && res.ok) {
         showToast('Note created');
         await loadGraph();
         navigateTo(res.slug);
       }
     } catch (err) {
-      await window.FlowStateDB.queueMutation({ type: 'create', payload });
-      showToast('Offline: note queued');
-      state.outbox += 1;
-      updateOutboxBubble();
+      console.warn('Create failed, queueing offline', err);
+      try {
+        await window.FlowStateDB.queueMutation({ type: 'create', payload });
+        showToast('Offline: note queued');
+        state.outbox += 1;
+        updateOutboxBubble();
+        updateSyncStatus('Queued for sync', 'pending');
+      } catch (dbErr) {
+        console.error('Failed to queue create', dbErr);
+        updateSyncStatus('Queue failed', 'error');
+      }
+    } finally {
+      state.saveInFlight = false;
     }
   }
 
@@ -235,25 +447,40 @@
     const next = elements.publish.dataset.public === '1' ? 0 : 1;
     try {
       const res = await window.FlowStateApi.togglePublic(state.current.id, next === 1);
+      if (res && res.unauthorized) {
+        window.location.href = 'login.php';
+        return;
+      }
       if (res && res.ok) {
         elements.publish.dataset.public = next.toString();
         elements.publish.textContent = next ? 'Public' : 'Private';
+        state.current.is_public = next;
         showToast(next ? 'Published' : 'Private');
+        await loadGraph();
       }
     } catch (err) {
+      console.warn('Toggle publish failed', err);
       showToast('Toggle failed');
     }
   }
 
   function toggleGraph() {
+    if (!elements.graphPanel) {
+      return;
+    }
     const expanded = elements.graphPanel.classList.toggle('visible');
-    elements.graphToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    if (elements.graphToggle) {
+      elements.graphToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+    if (expanded && graph && typeof graph.resize === 'function') {
+      graph.resize();
+    }
   }
 
   function handleGlobalKeys(event) {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
-      saveNote();
+      saveNote({ source: 'shortcut' });
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
@@ -265,19 +492,27 @@
   }
 
   function openCmdk() {
+    if (!elements.cmdkDialog || isPublic) {
+      return;
+    }
     elements.cmdkDialog.showModal();
-    elements.cmdkInput.value = '';
-    elements.cmdkResults.innerHTML = '';
-    elements.cmdkInput.focus();
+    if (elements.cmdkInput) {
+      elements.cmdkInput.value = '';
+      elements.cmdkResults.innerHTML = '';
+      elements.cmdkInput.focus();
+    }
   }
 
   function closeCmdk() {
-    if (elements.cmdkDialog.open) {
+    if (elements.cmdkDialog && elements.cmdkDialog.open) {
       elements.cmdkDialog.close();
     }
   }
 
   async function handleSearch() {
+    if (!elements.cmdkInput || !elements.cmdkResults) {
+      return;
+    }
     const query = elements.cmdkInput.value.trim();
     elements.cmdkResults.innerHTML = '';
     if (!query) {
@@ -285,6 +520,10 @@
     }
     try {
       const res = await window.FlowStateApi.search(query);
+      if (res && res.unauthorized) {
+        window.location.href = 'login.php';
+        return;
+      }
       if (res.results && res.results.length) {
         for (const note of res.results) {
           const li = document.createElement('li');
@@ -300,7 +539,7 @@
         elements.cmdkResults.appendChild(li);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Search failed', err);
     }
   }
 
@@ -314,6 +553,9 @@
   }
 
   function showToast(message) {
+    if (!elements.toast) {
+      return;
+    }
     elements.toast.textContent = message;
     elements.toast.classList.add('visible');
     setTimeout(() => {
@@ -330,13 +572,25 @@
   }
 
   async function syncOutbox() {
-    const success = await window.FlowStateDB.syncOutbox();
-    if (success) {
-      state.outbox = 0;
-      updateOutboxBubble();
-      showToast('Synced offline edits');
-      elements.syncStatus.textContent = 'Synced';
-      await loadGraph();
+    if (!window.FlowStateDB) {
+      return;
+    }
+    try {
+      const result = await window.FlowStateDB.syncOutbox();
+      if (result === 'unauthorized') {
+        window.location.href = 'login.php';
+        return;
+      }
+      if (result) {
+        state.outbox = 0;
+        updateOutboxBubble();
+        updateSyncStatus('Synced', 'success');
+        showToast('Synced offline edits');
+        await loadGraph();
+      }
+    } catch (err) {
+      console.warn('Outbox sync failed', err);
+      updateSyncStatus('Sync failed', 'error');
     }
   }
 
@@ -345,13 +599,36 @@
       return;
     }
     if (state.outbox > 0) {
-      elements.syncStatus.textContent = `${state.outbox} pending`; 
-      elements.syncStatus.classList.add('pending');
-    } else {
-      elements.syncStatus.textContent = 'All changes synced';
-      elements.syncStatus.classList.remove('pending');
+      updateSyncStatus(`${state.outbox} pending`, 'pending');
+    } else if (!isPublic) {
+      updateSyncStatus('All changes synced');
     }
   }
 
-  bootstrap();
-}());
+  function updateSyncStatus(message, variant) {
+    if (!elements.syncStatus) {
+      return;
+    }
+    elements.syncStatus.textContent = message;
+    elements.syncStatus.classList.remove('pending', 'error', 'success');
+    if (variant) {
+      elements.syncStatus.classList.add(variant);
+    }
+  }
+
+  function handleOnline() {
+    showToast('Back online');
+    if (!isPublic) {
+      updateSyncStatus('Online', 'success');
+      syncOutbox();
+      loadGraph();
+    }
+  }
+
+  function handleOffline() {
+    showToast('Offline');
+    if (!isPublic) {
+      updateSyncStatus('Offline', 'pending');
+    }
+  }
+})();

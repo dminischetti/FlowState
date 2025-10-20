@@ -18,25 +18,13 @@ class Auth
     {
         $this->pdo = $pdo;
         $this->sessionName = $sessionName;
-        $this->ensureSession();
-    }
-
-    private function ensureSession(): void
-    {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            return;
-        }
-
-        session_name($this->sessionName);
-        session_start([
-            'cookie_samesite' => 'Lax',
-            'cookie_secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
-            'cookie_httponly' => true,
-        ]);
+        Session::configure($sessionName);
+        Session::start($sessionName);
     }
 
     public function login(string $email, string $password): bool
     {
+        Session::start($this->sessionName);
         $stmt = $this->pdo->prepare('SELECT id, email, pw_hash FROM users WHERE email = :email LIMIT 1');
         $stmt->execute(['email' => $email]);
         $user = $stmt->fetch();
@@ -58,6 +46,9 @@ class Auth
 
     public function logout(): void
     {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            Session::start($this->sessionName);
+        }
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
             $params = session_get_cookie_params();
@@ -76,6 +67,9 @@ class Auth
 
     public function check(): bool
     {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            Session::start($this->sessionName);
+        }
         return isset($_SESSION['user_id']);
     }
 
@@ -89,11 +83,17 @@ class Auth
 
     public function userId(): ?int
     {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            Session::start($this->sessionName);
+        }
         return $_SESSION['user_id'] ?? null;
     }
 
     public function email(): ?string
     {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            Session::start($this->sessionName);
+        }
         return $_SESSION['email'] ?? null;
     }
 }

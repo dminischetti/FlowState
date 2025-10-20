@@ -8,18 +8,24 @@
       this.animationFrame = null;
       this.hoverNode = null;
       this.onOpen = () => {};
+      this.viewportWidth = canvas.clientWidth || canvas.width;
+      this.viewportHeight = canvas.clientHeight || canvas.height;
+      this.handleResize = this.handleResize.bind(this);
+      window.addEventListener('resize', this.handleResize);
+      this.resize();
       canvas.addEventListener('mousemove', this.handleMove.bind(this));
       canvas.addEventListener('click', this.handleClick.bind(this));
     }
 
     setData(nodes, links) {
+      this.resize();
       this.nodes = nodes.map((node, idx) => ({
         id: node.id,
         slug: node.slug,
         title: node.title,
         tags: node.tags,
-        x: Math.random() * this.canvas.width,
-        y: Math.random() * this.canvas.height,
+        x: Math.random() * this.viewportWidth,
+        y: Math.random() * this.viewportHeight,
         vx: 0,
         vy: 0,
         color: this.colorFor(node.tags, idx)
@@ -29,6 +35,10 @@
         target: this.nodes.find(n => n.id === link.dst_id),
         score: link.score
       })).filter(l => l.source && l.target);
+      if (this.animationFrame) {
+        cancelAnimationFrame(this.animationFrame);
+        this.animationFrame = null;
+      }
       this.tick();
     }
 
@@ -52,8 +62,8 @@
     }
 
     updatePhysics() {
-      const width = this.canvas.width;
-      const height = this.canvas.height;
+      const width = this.viewportWidth;
+      const height = this.viewportHeight;
       const repulsion = 5000;
       const spring = 0.05;
 
@@ -98,7 +108,7 @@
 
     draw() {
       const ctx = this.ctx;
-      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = 'rgba(120, 120, 180, 0.4)';
       for (const link of this.links) {
@@ -162,6 +172,23 @@
       if (this.hoverNode) {
         this.onOpen(this.hoverNode.slug);
       }
+    }
+
+    resize() {
+      const rect = this.canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return;
+      }
+      const ratio = window.devicePixelRatio || 1;
+      this.viewportWidth = rect.width;
+      this.viewportHeight = rect.height;
+      this.canvas.width = rect.width * ratio;
+      this.canvas.height = rect.height * ratio;
+      this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    handleResize() {
+      this.resize();
     }
   }
 
