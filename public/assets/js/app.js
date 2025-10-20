@@ -4,9 +4,7 @@
   const elements = {
     title: document.getElementById('note-title'),
     tags: document.getElementById('note-tags'),
-    content: document.getElementById('note-content'),
-    preview: document.getElementById('preview'),
-    previewScroll: document.getElementById('preview-scroll'),
+    content: document.getElementById('note-editor'),
     related: document.getElementById('related-list'),
     backlinks: document.getElementById('backlinks-list'),
     save: document.getElementById('save-button'),
@@ -28,66 +26,14 @@
     outbox: 0
   };
 
-  const scrollSyncState = { active: false };
-
-  function setupScrollSync() {
-    const scrollables = [elements.content, elements.previewScroll].filter(Boolean);
-    if (!scrollables.length) {
-      return;
-    }
-    for (const el of scrollables) {
-      el.addEventListener('scroll', () => syncScroll(el));
-    }
-  }
-
-  function syncScroll(source) {
-    if (scrollSyncState.active || !source) {
-      return;
-    }
-    scrollSyncState.active = true;
-    const ratio = getScrollRatio(source);
-    const peers = [elements.content, elements.previewScroll].filter(Boolean);
-    for (const el of peers) {
-      if (el === source) {
-        continue;
-      }
-      setScrollRatio(el, ratio);
-    }
-    window.requestAnimationFrame(() => {
-      scrollSyncState.active = false;
-    });
-  }
-
-  function getScrollRatio(el) {
-    if (!el) {
-      return 0;
-    }
-    const max = el.scrollHeight - el.clientHeight;
-    if (max <= 0) {
-      return 0;
-    }
-    return el.scrollTop / max;
-  }
-
-  function setScrollRatio(el, ratio) {
-    if (!el) {
-      return;
-    }
-    const max = el.scrollHeight - el.clientHeight;
-    if (max <= 0) {
-      el.scrollTop = 0;
-      return;
-    }
-    const clamped = Math.min(1, Math.max(0, ratio));
-    el.scrollTop = clamped * max;
+  if (elements.content) {
+    window.FlowStateEditor.init(elements.content);
   }
 
   function resetScrollPositions() {
-    [elements.content, elements.previewScroll].forEach(el => {
-      if (el) {
-        el.scrollTop = 0;
-      }
-    });
+    if (elements.content) {
+      elements.content.scrollTop = 0;
+    }
   }
 
   async function bootstrap() {
@@ -104,12 +50,17 @@
       elements.publish.style.display = 'none';
       elements.title.disabled = true;
       elements.tags.disabled = true;
-      elements.content.disabled = true;
+      if (elements.content) {
+        elements.content.setAttribute('contenteditable', 'false');
+      }
       if (elements.topActions) {
         elements.topActions.style.display = 'none';
       }
       elements.syncStatus.textContent = 'Public view';
     } else {
+      if (elements.content) {
+        elements.content.setAttribute('contenteditable', 'true');
+      }
       const session = await window.FlowStateApi.session();
       if (!session.auth) {
         window.location.href = 'login.php';
@@ -129,9 +80,6 @@
 
   function attachEvents() {
     window.addEventListener('hashchange', handleRoute);
-    elements.content.addEventListener('input', handleContentChange);
-    elements.title.addEventListener('input', () => updatePreview());
-    elements.tags.addEventListener('input', () => updatePreview());
     elements.save.addEventListener('click', saveNote);
     elements.publish.addEventListener('click', togglePublish);
     elements.graphToggle.addEventListener('click', toggleGraph);
@@ -148,7 +96,6 @@
       selectCmdkItem(li.dataset.slug, li.dataset.create === '1');
     });
 
-    setupScrollSync();
   }
 
   function handleRoute() {
@@ -190,10 +137,9 @@
       state.etag = res.etag;
       elements.title.value = res.note.title;
       elements.tags.value = res.note.tags || '';
-      elements.content.value = res.note.content;
+      window.FlowStateEditor.setMarkdown(elements.content, res.note.content || '');
       elements.publish.dataset.public = res.note.is_public;
       elements.publish.textContent = res.note.is_public ? 'Public' : 'Private';
-      updatePreview();
       resetScrollPositions();
       populateList(elements.related, res.related);
       populateList(elements.backlinks, res.backlinks);
@@ -204,8 +150,7 @@
       if (cached) {
         elements.title.value = cached.title;
         elements.tags.value = cached.tags || '';
-        elements.content.value = cached.content;
-        updatePreview();
+        window.FlowStateEditor.setMarkdown(elements.content, cached.content || '');
         resetScrollPositions();
         showToast('Offline mode: showing cached note');
       } else {
@@ -232,23 +177,13 @@
     }
   }
 
-  function handleContentChange() {
-    updatePreview();
-  }
-
-  function updatePreview() {
-    const text = elements.content.value;
-    const html = window.FlowStateEditor.renderMarkdown(`# ${elements.title.value}\n\n${text}`);
-    elements.preview.innerHTML = html;
-  }
-
   async function saveNote() {
     if (isPublic) {
       return;
     }
     const payload = {
       title: elements.title.value.trim() || 'Untitled',
-      content: elements.content.value,
+      content: window.FlowStateEditor.getMarkdown(elements.content),
       tags: elements.tags.value.trim()
     };
 
