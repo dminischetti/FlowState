@@ -17,6 +17,5 @@ return [
         'base_url' => 'https://example.com',
         'csrf_key' => 'replace_with_random_32_char_secret',
         'api_base' => '/api',
-        'sw_path' => 'sw.js',
     ],
 ];

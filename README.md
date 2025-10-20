@@ -21,7 +21,6 @@ public/              # Upload this folder to htdocs/
   login.php          # Auth entry point
   logout.php         # Calls API logout and redirects
   admin.php          # Authenticated password reset helper
-  sw.js              # Service worker for offline shell
   manifest.webmanifest
   assets/
     css/app.css
@@ -97,7 +96,6 @@ Component recipes:
 
 ## Offline & Sync
 
-- `public/sw.js` caches the application shell and falls back for API requests.
 - `assets/js/db.js` creates an IndexedDB database with `notes` cache and `outbox` queue.
 - Failed mutations enqueue into the outbox; when the browser regains connectivity the queue syncs via the REST API.
 - A sync bubble in the footer indicates pending operations.
@@ -125,7 +123,7 @@ Update the password immediately via `/admin.php` on first deployment.
 
 - [ ] Database imported (`schema.sql`, `seed.sql`).
 - [ ] `config/config.php` populated with correct secrets.
-- [ ] `public/manifest.webmanifest` and `sw.js` served with proper MIME (see `.htaccess`).
+- [ ] `public/manifest.webmanifest` served with proper MIME (see `.htaccess`).
 - [ ] Service worker registered after first visit.
 - [ ] Optional: run `/api/notes.php?action=reindexAll` post-import.
 

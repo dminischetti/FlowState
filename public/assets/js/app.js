@@ -2,7 +2,6 @@
   const body = document.body;
   const isPublic = body.dataset.public === '1';
   const initialSlug = body.dataset.slug || null;
-  const swPath = body.dataset.swPath || 'sw.js';
 
   const elements = {
     title: document.getElementById('note-title'),
@@ -44,14 +43,6 @@
   bootstrap();
 
   async function bootstrap() {
-    if ('serviceWorker' in navigator) {
-      try {
-        await navigator.serviceWorker.register(swPath);
-      } catch (err) {
-        console.warn('SW registration failed', err);
-      }
-    }
-
     if (graph) {
       graph.onOpen = slug => navigateTo(slug);
     }

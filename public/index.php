@@ -24,7 +24,6 @@ if ($publicSlug === null && !$isAuthenticated) {
 }
 
 $apiBase = $config['app']['api_base'] ?? '/api';
-$swPath = $config['app']['sw_path'] ?? 'sw.js';
 ?><!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -51,7 +50,6 @@ $swPath = $config['app']['sw_path'] ?? 'sw.js';
     data-public="<?= $publicSlug !== null ? '1' : '0'; ?>"
     data-slug="<?= htmlspecialchars((string) $publicSlug, ENT_QUOTES); ?>"
     data-api-base="<?= htmlspecialchars($apiBase, ENT_QUOTES); ?>"
-    data-sw-path="<?= htmlspecialchars($swPath, ENT_QUOTES); ?>"
 >
     <div id="app-shell">
         <header class="top-bar">
