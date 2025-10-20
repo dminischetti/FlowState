@@ -48,15 +48,14 @@ $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_
                 </div>
                 <div class="editor-body">
                     <section class="workspace-pane editor-pane">
-                        <div
-                            id="note-editor"
-                            class="note-editor"
-                            contenteditable="true"
-                            role="textbox"
-                            aria-multiline="true"
-                            aria-label="Note content"
-                            data-placeholder="Write in Markdown…"
-                        ></div>
+                        <div class="note-editor">
+                            <textarea
+                                id="note-content"
+                                aria-label="Note content"
+                                placeholder="Write in Markdown…"
+                                data-placeholder="Write in Markdown…"
+                            ></textarea>
+                        </div>
                     </section>
                 </div>
                 <footer class="editor-footer">
@@ -88,6 +87,8 @@ $publicSlug = isset($_GET['p']) ? preg_replace('/[^a-z0-9\-]/i', '', (string) $_
 
     <script src="assets/js/api.js"></script>
     <script src="assets/js/db.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
+    <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
     <script src="assets/js/editor.js"></script>
     <script src="assets/js/graph.js"></script>
     <script src="assets/js/app.js"></script>

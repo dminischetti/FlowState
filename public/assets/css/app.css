@@ -226,103 +226,221 @@ input::placeholder {
 .note-editor {
   width: 100%;
   min-height: 100%;
-  border: none;
-  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.note-editor textarea {
+  width: 100%;
+  min-height: 320px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 1.05rem;
   font-family: inherit;
   line-height: 1.6;
-  flex: 1;
-  min-height: 0;
-  outline: none;
-  padding: 0;
-  overflow-y: auto;
-  white-space: normal;
-  position: relative;
+  padding: 1rem 1.25rem;
+  resize: vertical;
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition), color var(--transition);
 }
 
-.note-editor:focus {
+.note-editor textarea:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
   outline: none;
 }
 
-.note-editor[contenteditable="false"] {
-  cursor: default;
+.note-editor .editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0.35rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
 }
 
-.note-editor.is-empty::before {
-  content: attr(data-placeholder);
+.note-editor .editor-toolbar::-webkit-scrollbar {
+  height: 6px;
+}
+
+.note-editor .editor-toolbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+}
+
+.note-editor .editor-toolbar a,
+.note-editor .editor-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-secondary);
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  padding: 0;
-  font-weight: 400;
-  white-space: pre-wrap;
-  opacity: 0.7;
-}
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: background var(--transition), color var(--transition), transform var(--transition);
+  }
 
-.note-editor > * {
-  max-width: 90ch;
-}
-
-.note-editor > * + * {
-  margin-top: 0.75rem;
-}
-
-.note-editor p {
-  margin: 0;
+.note-editor .editor-toolbar a:hover,
+.note-editor .editor-toolbar a:focus-visible,
+.note-editor .editor-toolbar button:hover,
+.note-editor .editor-toolbar button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--text-primary);
+  transform: translateY(-1px);
+  outline: none;
 }
 
-.note-editor h1,
-.note-editor h2,
-.note-editor h3 {
+.note-editor .editor-toolbar.is-disabled a,
+.note-editor .editor-toolbar.is-disabled button {
+  pointer-events: none;
+  opacity: 0.45;
+  transform: none;
+}
+
+.note-editor .editor-toolbar .is-disabled {
+  pointer-events: none;
+  opacity: 0.45;
+  transform: none;
+}
+
+.note-editor .CodeMirror {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  font-family: inherit;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition), color var(--transition);
+  min-height: clamp(320px, 55vh, 720px);
+  height: auto;
+}
+
+.note-editor .CodeMirror-scroll {
+  min-height: clamp(280px, 50vh, 680px);
+  max-height: none;
+}
+
+.note-editor .CodeMirror-lines {
+  padding: 0 1.25rem 1.25rem;
+}
+
+.note-editor .CodeMirror pre {
+  font-family: inherit;
+}
+
+.note-editor .CodeMirror.CodeMirror-focused {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.note-editor.is-readonly .CodeMirror {
+  background: var(--surface-muted);
+}
+
+.note-editor.is-readonly .CodeMirror.CodeMirror-focused {
+  box-shadow: none;
+  border-color: var(--border-color);
+}
+
+.note-editor .cm-header-1,
+.note-editor .cm-header-2,
+.note-editor .cm-header-3 {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.note-editor .cm-strong {
+  font-weight: 600;
+}
+
+.note-editor .cm-em {
+  font-style: italic;
+}
+
+.note-editor .cm-link {
+  color: var(--accent-strong);
+}
+
+.note-editor .cm-quote {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.note-editor .editor-preview,
+.note-editor .editor-preview-side {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 1.25rem 1.5rem;
+}
+
+.note-editor .editor-preview h1,
+.note-editor .editor-preview h2,
+.note-editor .editor-preview h3,
+.note-editor .editor-preview-side h1,
+.note-editor .editor-preview-side h2,
+.note-editor .editor-preview-side h3 {
   color: var(--accent);
   font-weight: 500;
   line-height: 1.3;
-  margin: 0;
+  margin-top: 0;
 }
 
-.note-editor h2 {
-  font-size: 1.35rem;
-}
-
-.note-editor h1 {
+.note-editor .editor-preview h1,
+.note-editor .editor-preview-side h1 {
   font-size: 1.6rem;
 }
 
-.note-editor ul {
-  margin: 0;
+.note-editor .editor-preview h2,
+.note-editor .editor-preview-side h2 {
+  font-size: 1.35rem;
+}
+
+.note-editor .editor-preview p,
+.note-editor .editor-preview-side p {
+  margin: 0 0 0.75rem;
+  color: var(--text-primary);
+}
+
+.note-editor .editor-preview ul,
+.note-editor .editor-preview-side ul {
+  margin: 0 0 0.75rem;
   padding-left: 1.25rem;
   list-style: disc;
 }
 
-.note-editor li {
+.note-editor .editor-preview li,
+.note-editor .editor-preview-side li {
   margin: 0.25rem 0;
   color: var(--text-primary);
 }
 
-.note-editor a {
+.note-editor .editor-preview a,
+.note-editor .editor-preview-side a {
   color: var(--accent-strong);
   text-decoration: none;
   transition: color var(--transition);
 }
 
-.note-editor a:hover,
-.note-editor a:focus-visible {
+.note-editor .editor-preview a:hover,
+.note-editor .editor-preview a:focus-visible,
+.note-editor .editor-preview-side a:hover,
+.note-editor .editor-preview-side a:focus-visible {
   color: var(--accent);
   text-decoration: underline;
 }
 
-.note-editor em {
-  font-style: italic;
-}
-
-.note-editor strong {
-  font-weight: 600;
-}
-
-.note-editor code {
+.note-editor .editor-preview code,
+.note-editor .editor-preview-side code {
   background: var(--accent-soft);
   padding: 0.15rem 0.4rem;
   border-radius: var(--radius);
@@ -330,9 +448,25 @@ input::placeholder {
   font-size: 0.95em;
 }
 
+.note-editor .editor-preview em,
+.note-editor .editor-preview-side em {
+  font-style: italic;
+}
+
+.note-editor .editor-preview strong,
+.note-editor .editor-preview-side strong {
+  font-weight: 600;
+}
+
 @media (max-width: 780px) {
   .editor-body {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .note-editor .editor-toolbar {
+    flex-wrap: nowrap;
   }
 }
 
